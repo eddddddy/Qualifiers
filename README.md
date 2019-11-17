@@ -20,24 +20,24 @@ from qualifiers.py import qualify, private, protected, public, final
 @qualify
 class Test:
 
-	@private
-	def private_method(self):
-		print("Private")
-		
-	@protected
-	def protected_method(self):
-		print("Protected")
-	
-	@public
-	def public_method(self):
-		print("Public")
+    @private
+    def private_method(self):
+        print("Private")
+        
+    @protected
+    def protected_method(self):
+        print("Protected")
+    
+    @public
+    def public_method(self):
+        print("Public")
 
-	@final
-	def final_method(self):
-		print("Final")
+    @final
+    def final_method(self):
+        print("Final")
 
-	@private
-	@final
-	def private_final_method(self):
-		print("Private final")
+    @private
+    @final
+    def private_final_method(self):
+        print("Private final")
 ```
