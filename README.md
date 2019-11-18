@@ -41,3 +41,7 @@ class Test:
     def private_final_method(self):
         print("Private final")
 ```
+
+## Known Issues
+- Qualifiers don't work with `@staticmethod` or `@classmethod`
+- `@private` qualifier doesn't work with `@property` decorator. Furthermore, `@protected`, `@public`, and `@final` qualifiers must be placed after the `@property` decorator. (Note that the first point isn't a big issue since private properties don't make sense anyways.)

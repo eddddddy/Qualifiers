@@ -287,6 +287,63 @@ class F(A):
         return A.PUBLIC
 
 
+@qualify
+class G:
+    Y = 2
+    Z = 3
+
+    @public
+    def __init__(self):
+        self.__y = G.Y
+        self.__z = G.Z
+
+    @property
+    @protected
+    def y(self):
+        return self.__y
+
+    @y.setter
+    @protected
+    def y(self, value):
+        self.__y = value
+
+    @y.deleter
+    @protected
+    def y(self):
+        del self.__y
+
+    @property
+    @public
+    def z(self):
+        return self.__z
+
+    @z.setter
+    @public
+    def z(self, value):
+        self.__z = value
+
+    @z.deleter
+    @public
+    def z(self):
+        del self.__z
+
+
+@qualify
+class H(G):
+
+    @public
+    def base_get_protected(self):
+        return self.y
+
+    @public
+    def base_set_protected(self, value):
+        self.y = value
+
+    @public
+    def base_del_protected(self):
+        del self.y
+
+
 class TestQualifiers(unittest.TestCase):
 
     def test_simple_visibility(self):
@@ -374,6 +431,28 @@ class TestQualifiers(unittest.TestCase):
         self.assertRaises(AttributeError, f.private_method3)
         self.assertRaises(AttributeError, f.protected_method3)
         self.assertEqual(f.public_method3(), A.PUBLIC)
+
+    def test_property(self):
+        g = G()
+        get = lambda name: getattr(g, name)
+        set = lambda name: setattr(g, name, 0)
+        dele = lambda name: delattr(g, name)
+        self.assertRaises(AttributeError, get, 'y')
+        self.assertRaises(AttributeError, set, 'y')
+        self.assertRaises(AttributeError, dele, 'y')
+        self.assertEqual(g.z, G.Z)
+        set('z')
+        self.assertEqual(g.z, 0)
+        dele('z')
+        self.assertRaises(AttributeError, get, 'z')
+
+    def test_parent_property(self):
+        h = H()
+        self.assertEqual(h.base_get_protected(), G.Y)
+        h.base_set_protected(-1)
+        self.assertEqual(h.base_get_protected(), -1)
+        h.base_del_protected()
+        self.assertRaises(AttributeError, h.base_get_protected)
 
 
 def main():
