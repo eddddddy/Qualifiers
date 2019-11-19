@@ -4,25 +4,19 @@ This module has not been tested extensively and should only
 """
 
 import functools
-import string
-import random
 import inspect
 
 
-def __random_string():
-    return ''.join(random.choices(string.ascii_letters, k=30))
-
-
-def __caller_has_token(token, init_frames=2):
+def __get_calling_object(init_frames=2):
     frame = inspect.stack()[0].frame
     count = init_frames
-    while "self" not in frame.f_locals or count > 0:
+    while 'self' not in frame.f_locals or count > 0:
         frame = frame.f_back
         if frame is None:
             return False
-        if "self" in frame.f_locals:
+        if 'self' in frame.f_locals:
             count -= 1
-    return token in frame.f_locals["self"].__dir__()
+    return frame.f_locals['self']
 
 
 def __get_class_with_method(func):
@@ -39,25 +33,8 @@ def __get_class_with_method(func):
     return getattr(func, '__objclass__', None)
 
 
-__PRIVATE = []
 __FINAL = []
 __CLASS = {}
-
-
-def __raise_private(base_cls, attr):
-    def __do_raise(*args, **kwargs):
-        raise AttributeError(f"Attribute {attr} is private "
-                             f"in class {base_cls.__qualname__}")
-
-    return __do_raise
-
-
-def __raise_final(base_cls, attr):
-    def __do_raise(*args, **kwargs):
-        raise AttributeError(f"Attribute {attr} is final "
-                             f"in class {base_cls.__qualname__}")
-
-    return __do_raise
 
 
 def qualify(cls):
@@ -69,9 +46,8 @@ def qualify(cls):
     for base_cls in bases:
         for key in base_cls.__dict__:
             if f"{base_cls.__qualname__}.{key}" in __FINAL and key in dct:
-                __raise_final(base_cls, key)()
-            if f"{base_cls.__qualname__}.{key}" in __PRIVATE and key not in dct:
-                dct[key] = __raise_private(base_cls, key)
+                raise AttributeError(f"Attribute {key} is final "
+                                     f"in class {base_cls.__qualname__}")
     return type(cls.__name__, bases, dct)
 
 
@@ -79,24 +55,28 @@ def private(func):
     """
     Qualify a method to be private
     """
-    token = __random_string()
-    __PRIVATE.append(func.__qualname__)
 
     @functools.wraps(func)
     def __make_private(self, *args, **kwargs):
-        setattr(self.__class__, token, 1)
-        if not __caller_has_token(token):
+        __caller = __get_calling_object()
+        if not hasattr(__caller, '__dispatch__'):
             raise AttributeError(f"Attribute {func.__name__} is private "
                                  f"in class {self.__class__.__qualname__}")
-        __class = self.__class__
+
+        __old_dispatch__ = self.__dispatch__ if hasattr(self, '__dispatch__') else self.__class__
         if func.__qualname__ in __CLASS:
-            __base = __CLASS[func.__qualname__]
+            __dispatch = __CLASS[func.__qualname__]
         else:
-            __base = __get_class_with_method(func)
-            __CLASS[func.__qualname__] = __base
-        self.__class__ = __base
+            __dispatch = __get_class_with_method(func)
+            __CLASS[func.__qualname__] = __dispatch
+
+        if __dispatch is not __old_dispatch__:
+            raise AttributeError(f"Attribute {func.__name__} is private "
+                                 f"in class {__dispatch.__qualname__}")
+
+        self.__dispatch__ = __dispatch
         __return = func.__get__(self, type(self))(*args, **kwargs)
-        self.__class__ = __class
+        self.__dispatch__ = __old_dispatch__
         return __return
 
     return __make_private
@@ -106,23 +86,28 @@ def protected(func):
     """
     Qualify a method to be protected
     """
-    token = __random_string()
 
     @functools.wraps(func)
     def __make_protected(self, *args, **kwargs):
-        setattr(self.__class__, token, 1)
-        if not __caller_has_token(token):
+        __caller = __get_calling_object()
+        if not hasattr(__caller, '__dispatch__'):
             raise AttributeError(f"Attribute {func.__name__} is protected "
                                  f"in class {self.__class__.__qualname__}")
-        __class = self.__class__
+
+        __old_dispatch__ = self.__dispatch__ if hasattr(self, '__dispatch__') else self.__class__
         if func.__qualname__ in __CLASS:
-            __base = __CLASS[func.__qualname__]
+            __dispatch = __CLASS[func.__qualname__]
         else:
-            __base = __get_class_with_method(func)
-            __CLASS[func.__qualname__] = __base
-        self.__class__ = __base
+            __dispatch = __get_class_with_method(func)
+            __CLASS[func.__qualname__] = __dispatch
+
+        if not isinstance(self, __dispatch) or func.__name__ not in dir(__old_dispatch__):
+            raise AttributeError(f"Attribute {func.__name__} is protected "
+                                 f"in class {self.__class__.__qualname__}")
+
+        self.__dispatch__ = __dispatch
         __return = func.__get__(self, type(self))(*args, **kwargs)
-        self.__class__ = __class
+        self.__dispatch__ = __old_dispatch__
         return __return
 
     return __make_protected
@@ -135,15 +120,15 @@ def public(func):
 
     @functools.wraps(func)
     def __make_public(self, *args, **kwargs):
-        __class = self.__class__
+        __old_dispatch__ = self.__dispatch__ if hasattr(self, '__dispatch__') else self.__class__
         if func.__qualname__ in __CLASS:
-            __base = __CLASS[func.__qualname__]
+            __dispatch = __CLASS[func.__qualname__]
         else:
-            __base = __get_class_with_method(func)
-            __CLASS[func.__qualname__] = __base
-        self.__class__ = __base
+            __dispatch = __get_class_with_method(func)
+            __CLASS[func.__qualname__] = __dispatch
+        self.__dispatch__ = __dispatch
         __return = func.__get__(self, type(self))(*args, **kwargs)
-        self.__class__ = __class
+        self.__dispatch__ = __old_dispatch__
         return __return
 
     return __make_public
@@ -157,15 +142,15 @@ def final(func):
 
     @functools.wraps(func)
     def __make_final(self, *args, **kwargs):
-        __class = self.__class__
+        __old_dispatch__ = self.__dispatch__ if hasattr(self, '__dispatch__') else self.__class__
         if func.__qualname__ in __CLASS:
-            __base = __CLASS[func.__qualname__]
+            __dispatch = __CLASS[func.__qualname__]
         else:
-            __base = __get_class_with_method(func)
-            __CLASS[func.__qualname__] = __base
-        self.__class__ = __base
+            __dispatch = __get_class_with_method(func)
+            __CLASS[func.__qualname__] = __dispatch
+        self.__dispatch__ = __dispatch
         __return = func.__get__(self, type(self))(*args, **kwargs)
-        self.__class__ = __class
+        self.__dispatch__ = __old_dispatch__
         return __return
 
     return __make_final

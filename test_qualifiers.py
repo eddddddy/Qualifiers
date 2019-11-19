@@ -145,6 +145,7 @@ class D:
     PRIVATE = 1
     PROTECTED = 2
     PUBLIC = 3
+    SUPER = 10
 
     @private
     def private_method(self):
@@ -194,9 +195,29 @@ class D:
     def public_to_public(self):
         return self.public_method()
 
+    @public
+    @final
+    def public_dispatcher(self):
+        return self.public_dispatch()
+
+    @public
+    def public_dispatch(self):
+        return D.SUPER
+
+    @public
+    @final
+    def protected_dispatcher(self):
+        return self.protected_dispatch()
+
+    @protected
+    def protected_dispatch(self):
+        return D.SUPER
+
 
 @qualify
 class E(D):
+
+    SUB = 11
 
     @public
     def base_private_to_private(self):
@@ -241,6 +262,14 @@ class E(D):
     @protected
     def base_public_to_protected_protected(self):
         return self.public_to_protected()
+
+    @public
+    def public_dispatch(self):
+        return E.SUB
+
+    @protected
+    def protected_dispatch(self):
+        return E.SUB
 
 
 @qualify
@@ -405,6 +434,8 @@ class TestQualifiers(unittest.TestCase):
         self.assertEqual(d.public_to_private(), D.PRIVATE)
         self.assertEqual(d.public_to_protected(), D.PROTECTED)
         self.assertEqual(d.public_to_public(), D.PUBLIC)
+        self.assertEqual(d.public_dispatcher(), D.SUPER)
+        self.assertEqual(d.protected_dispatcher(), D.SUPER)
 
     def test_parent_delegation(self):
         e = E()
@@ -419,6 +450,8 @@ class TestQualifiers(unittest.TestCase):
         self.assertEqual(e.base_public_to_public(), D.PUBLIC)
         self.assertRaises(AttributeError, e.base_public_to_private_private)
         self.assertRaises(AttributeError, e.base_public_to_protected_protected)
+        self.assertEqual(e.public_dispatcher(), E.SUB)
+        self.assertEqual(e.protected_dispatcher(), E.SUB)
 
     def test_qualifier_override(self):
         f = F()
