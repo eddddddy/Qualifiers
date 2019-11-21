@@ -7,7 +7,18 @@ import functools
 import inspect
 
 
-def __get_calling_object(init_frames=2):
+class Visibility:
+    PRIVATE = 1
+    PROTECTED = 2
+    PUBLIC = 3
+
+
+class AccessError(Exception):
+    def __init__(self, message):
+        self.message = message
+
+
+def __get_calling_object(init_frames=3):
     frame = inspect.stack()[0].frame
     count = init_frames
     while 'self' not in frame.f_locals or count > 0:
@@ -33,8 +44,28 @@ def __get_class_with_method(func):
     return getattr(func, '__objclass__', None)
 
 
+__FUNCS = {}
 __FINAL = []
 __CLASS = {}
+
+
+def __new_getattribute(self, name):
+    if name in ['__dispatch__', '__class__', '__mro__']:
+        return object.__getattribute__(self, name)
+
+    __dispatch = self.__dispatch__ if hasattr(self, '__dispatch__') else self.__class__
+    __mro = __dispatch.__mro__
+    for __class in __mro:
+        if f"{__class.__qualname__}.{name}" in __FUNCS:
+            visibility = __FUNCS[f"{__class.__qualname__}.{name}"]
+            if visibility in (Visibility.PUBLIC, Visibility.PROTECTED):
+                return object.__getattribute__(self, name)
+            elif __class is __dispatch:
+                return object.__getattribute__(self, name)
+            else:
+                raise AccessError(f"Attribute {name} is private "
+                                  f"in class {__class.__qualname__}")
+    return object.__getattribute__(self, name)
 
 
 def qualify(cls):
@@ -46,8 +77,9 @@ def qualify(cls):
     for base_cls in bases:
         for key in base_cls.__dict__:
             if f"{base_cls.__qualname__}.{key}" in __FINAL and key in dct:
-                raise AttributeError(f"Attribute {key} is final "
-                                     f"in class {base_cls.__qualname__}")
+                raise AccessError(f"Attribute {key} is final "
+                                  f"in class {base_cls.__qualname__}")
+    dct['__getattribute__'] = __new_getattribute
     return type(cls.__name__, bases, dct)
 
 
@@ -55,13 +87,14 @@ def private(func):
     """
     Qualify a method to be private
     """
+    __FUNCS[func.__qualname__] = Visibility.PRIVATE
 
     @functools.wraps(func)
     def __make_private(self, *args, **kwargs):
         __caller = __get_calling_object()
         if not hasattr(__caller, '__dispatch__'):
-            raise AttributeError(f"Attribute {func.__name__} is private "
-                                 f"in class {self.__class__.__qualname__}")
+            raise AccessError(f"Attribute {func.__name__} is private "
+                              f"in class {self.__class__.__qualname__}")
 
         __old_dispatch__ = self.__dispatch__ if hasattr(self, '__dispatch__') else self.__class__
         if func.__qualname__ in __CLASS:
@@ -70,9 +103,9 @@ def private(func):
             __dispatch = __get_class_with_method(func)
             __CLASS[func.__qualname__] = __dispatch
 
-        if __dispatch is not __old_dispatch__:
-            raise AttributeError(f"Attribute {func.__name__} is private "
-                                 f"in class {__dispatch.__qualname__}")
+        if not isinstance(__caller, __dispatch):
+            raise AccessError(f"Attribute {func.__name__} is private "
+                              f"in class {self.__class__.__qualname__}")
 
         self.__dispatch__ = __dispatch
         __return = func.__get__(self, type(self))(*args, **kwargs)
@@ -86,13 +119,14 @@ def protected(func):
     """
     Qualify a method to be protected
     """
+    __FUNCS[func.__qualname__] = Visibility.PROTECTED
 
     @functools.wraps(func)
     def __make_protected(self, *args, **kwargs):
         __caller = __get_calling_object()
         if not hasattr(__caller, '__dispatch__'):
-            raise AttributeError(f"Attribute {func.__name__} is protected "
-                                 f"in class {self.__class__.__qualname__}")
+            raise AccessError(f"Attribute {func.__name__} is protected "
+                              f"in class {self.__class__.__qualname__}")
 
         __old_dispatch__ = self.__dispatch__ if hasattr(self, '__dispatch__') else self.__class__
         if func.__qualname__ in __CLASS:
@@ -101,9 +135,9 @@ def protected(func):
             __dispatch = __get_class_with_method(func)
             __CLASS[func.__qualname__] = __dispatch
 
-        if not isinstance(self, __dispatch) or func.__name__ not in dir(__old_dispatch__):
-            raise AttributeError(f"Attribute {func.__name__} is protected "
-                                 f"in class {self.__class__.__qualname__}")
+        if not isinstance(__caller, __dispatch):
+            raise AccessError(f"Attribute {func.__name__} is protected "
+                              f"in class {self.__class__.__qualname__}")
 
         self.__dispatch__ = __dispatch
         __return = func.__get__(self, type(self))(*args, **kwargs)
@@ -117,6 +151,7 @@ def public(func):
     """
     Qualify a method to be public
     """
+    __FUNCS[func.__qualname__] = Visibility.PUBLIC
 
     @functools.wraps(func)
     def __make_public(self, *args, **kwargs):

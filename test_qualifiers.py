@@ -5,7 +5,7 @@ Tests for the decorators in qualifiers.py
 import unittest
 import random
 
-from qualifiers import qualify, private, protected, public, final
+from qualifiers import qualify, private, protected, public, final, AccessError
 
 
 @qualify
@@ -216,7 +216,6 @@ class D:
 
 @qualify
 class E(D):
-
     SUB = 11
 
     @public
@@ -373,40 +372,90 @@ class H(G):
         del self.y
 
 
+@qualify
+class I:
+    PROTECTED = 1
+    PRIVATE = 2
+
+    @public
+    def dispatcher1(self):
+        return self.protected1()
+
+    @public
+    def dispatcher2(self):
+        return self.private1()
+
+    @public
+    def dispatcher3(self):
+        return self.private2()
+
+    @protected
+    def protected1(self):
+        return I.PROTECTED
+
+    @private
+    def private1(self):
+        return I.PRIVATE
+
+    @private
+    def private2(self):
+        return I.PRIVATE
+
+
+@qualify
+class J(I):
+    PROTECTED = 3
+    PRIVATE = 4
+
+    @protected
+    def protected1(self):
+        return J.PROTECTED
+
+    @private
+    def private1(self):
+        return J.PRIVATE
+
+
 class TestQualifiers(unittest.TestCase):
 
     def test_simple_visibility(self):
         a = A()
-        self.assertRaises(AttributeError, a.private_method)
-        self.assertRaises(AttributeError, a.protected_method)
+        self.assertRaises(AccessError, a.private_method)
+        self.assertRaises(AccessError, a.protected_method)
         self.assertEqual(a.public_method(), A.PUBLIC)
-        self.assertRaises(AttributeError, a.private_final_method)
-        self.assertRaises(AttributeError, a.protected_final_method)
+        self.assertRaises(AccessError, a.private_final_method)
+        self.assertRaises(AccessError, a.protected_final_method)
         self.assertEqual(a.public_final_method(), A.PUBLIC_FINAL)
 
     def test_simple_inheritance(self):
         b = B()
-        self.assertRaises(AttributeError, b.base_private)
+        self.assertRaises(AccessError, b.base_private)
         self.assertEqual(b.base_protected(), A.PROTECTED)
         self.assertEqual(b.base_public(), A.PUBLIC)
-        self.assertRaises(AttributeError, b.base_public_private_method)
-        self.assertRaises(AttributeError, b.base_public_protected_method)
-        self.assertRaises(AttributeError, b.private_final_method)
-        self.assertRaises(AttributeError, b.protected_final_method)
+        self.assertRaises(AccessError, b.base_public_private_method)
+        self.assertRaises(AccessError, b.base_public_protected_method)
+
+        # assertRaises doesn't catch exceptions in __getattribute__, so
+        # we need to use a context manager
+        with self.assertRaises(AccessError):
+            b.private_final_method()
+
+        self.assertRaises(AccessError, b.protected_final_method)
+        self.assertEqual(b.public_method(), A.PUBLIC)
         self.assertEqual(b.public_final_method(), A.PUBLIC_FINAL)
 
     def test_method_parameters(self):
         c = C()
-        self.assertRaises(AttributeError, c.private_method, 2)
+        self.assertRaises(AccessError, c.private_method, 2)
         self.assertEqual(c.public_method(kwarg=1), 2)
-        self.assertRaises(AttributeError, c.private_method, kwarg=3)
+        self.assertRaises(AccessError, c.private_method, kwarg=3)
         self.assertEqual(c.public_final_method(4), 6)
         self.assertEqual(c.public_method_multi(1, 2, kwarg1=3), 10)
 
     def test_simple_final(self):
-        self.assertRaises(AttributeError, override_private_final)
-        self.assertRaises(AttributeError, override_protected_final)
-        self.assertRaises(AttributeError, override_public_final)
+        self.assertRaises(AccessError, override_private_final)
+        self.assertRaises(AccessError, override_protected_final)
+        self.assertRaises(AccessError, override_public_final)
 
     def test_simple_visibility_bypass(self):
         a = A()
@@ -416,21 +465,21 @@ class TestQualifiers(unittest.TestCase):
         protected_method2 = getattr(a, 'protected_method')
         public_method1 = getattr(a, 'public_method')
         public_method2 = a.__class__.__dict__['public_final_method']
-        self.assertRaises(AttributeError, private_method1)
-        self.assertRaises(AttributeError, private_method2, a)
-        self.assertRaises(AttributeError, protected_method1, a)
-        self.assertRaises(AttributeError, protected_method2)
+        self.assertRaises(AccessError, private_method1)
+        self.assertRaises(AccessError, private_method2, a)
+        self.assertRaises(AccessError, protected_method1, a)
+        self.assertRaises(AccessError, protected_method2)
         self.assertEqual(public_method1(), A.PUBLIC)
         self.assertEqual(public_method2(a), A.PUBLIC_FINAL)
 
     def test_delegation(self):
         d = D()
-        self.assertRaises(AttributeError, d.private_to_private)
-        self.assertRaises(AttributeError, d.private_to_protected)
-        self.assertRaises(AttributeError, d.private_to_public)
-        self.assertRaises(AttributeError, d.protected_to_private)
-        self.assertRaises(AttributeError, d.protected_to_protected)
-        self.assertRaises(AttributeError, d.protected_to_public)
+        self.assertRaises(AccessError, d.private_to_private)
+        self.assertRaises(AccessError, d.private_to_protected)
+        self.assertRaises(AccessError, d.private_to_public)
+        self.assertRaises(AccessError, d.protected_to_private)
+        self.assertRaises(AccessError, d.protected_to_protected)
+        self.assertRaises(AccessError, d.protected_to_public)
         self.assertEqual(d.public_to_private(), D.PRIVATE)
         self.assertEqual(d.public_to_protected(), D.PROTECTED)
         self.assertEqual(d.public_to_public(), D.PUBLIC)
@@ -439,30 +488,30 @@ class TestQualifiers(unittest.TestCase):
 
     def test_parent_delegation(self):
         e = E()
-        self.assertRaises(AttributeError, e.base_private_to_private)
-        self.assertRaises(AttributeError, e.base_private_to_protected)
-        self.assertRaises(AttributeError, e.base_private_to_public)
+        self.assertRaises(AccessError, e.base_private_to_private)
+        self.assertRaises(AccessError, e.base_private_to_protected)
+        self.assertRaises(AccessError, e.base_private_to_public)
         self.assertEqual(e.base_protected_to_private(), D.PRIVATE)
         self.assertEqual(e.base_protected_to_protected(), D.PROTECTED)
         self.assertEqual(e.base_protected_to_public(), D.PUBLIC)
         self.assertEqual(e.base_public_to_private(), D.PRIVATE)
         self.assertEqual(e.base_public_to_protected(), D.PROTECTED)
         self.assertEqual(e.base_public_to_public(), D.PUBLIC)
-        self.assertRaises(AttributeError, e.base_public_to_private_private)
-        self.assertRaises(AttributeError, e.base_public_to_protected_protected)
+        self.assertRaises(AccessError, e.base_public_to_private_private)
+        self.assertRaises(AccessError, e.base_public_to_protected_protected)
         self.assertEqual(e.public_dispatcher(), E.SUB)
         self.assertEqual(e.protected_dispatcher(), E.SUB)
 
     def test_qualifier_override(self):
         f = F()
-        self.assertRaises(AttributeError, f.private_method)
+        self.assertRaises(AccessError, f.private_method)
         self.assertEqual(f.private_method2(), A.PRIVATE)
-        self.assertRaises(AttributeError, f.protected_method)
+        self.assertRaises(AccessError, f.protected_method)
         self.assertEqual(f.protected_method2(), A.PROTECTED)
-        self.assertRaises(AttributeError, f.public_method)
-        self.assertRaises(AttributeError, f.public_method2)
-        self.assertRaises(AttributeError, f.private_method3)
-        self.assertRaises(AttributeError, f.protected_method3)
+        self.assertRaises(AccessError, f.public_method)
+        self.assertRaises(AccessError, f.public_method2)
+        self.assertRaises(AccessError, f.private_method3)
+        self.assertRaises(AccessError, f.protected_method3)
         self.assertEqual(f.public_method3(), A.PUBLIC)
 
     def test_property(self):
@@ -470,9 +519,9 @@ class TestQualifiers(unittest.TestCase):
         get = lambda name: getattr(g, name)
         set = lambda name: setattr(g, name, 0)
         dele = lambda name: delattr(g, name)
-        self.assertRaises(AttributeError, get, 'y')
-        self.assertRaises(AttributeError, set, 'y')
-        self.assertRaises(AttributeError, dele, 'y')
+        self.assertRaises(AccessError, get, 'y')
+        self.assertRaises(AccessError, set, 'y')
+        self.assertRaises(AccessError, dele, 'y')
         self.assertEqual(g.z, G.Z)
         set('z')
         self.assertEqual(g.z, 0)
@@ -486,6 +535,16 @@ class TestQualifiers(unittest.TestCase):
         self.assertEqual(h.base_get_protected(), -1)
         h.base_del_protected()
         self.assertRaises(AttributeError, h.base_get_protected)
+
+    def test_simple_dispatch(self):
+        i = I()
+        j = J()
+        self.assertEqual(i.dispatcher1(), I.PROTECTED)
+        self.assertEqual(i.dispatcher2(), I.PRIVATE)
+        self.assertEqual(i.dispatcher3(), I.PRIVATE)
+        self.assertEqual(j.dispatcher1(), J.PROTECTED)
+        self.assertEqual(j.dispatcher2(), J.PRIVATE)
+        self.assertEqual(j.dispatcher3(), I.PRIVATE)
 
 
 def main():
